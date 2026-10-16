@@ -1,0 +1,17 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy requirements from project root
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy model-generation script and data
+COPY src/model/create_model.py ./create_model.py
+
+COPY src/data ./data
+
+# Generate model artifacts when the container runs
+CMD ["python", "create_model.py"]

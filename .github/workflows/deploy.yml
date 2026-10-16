@@ -1,0 +1,104 @@
+name: Deploy to Azure
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Validate Azure configuration
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          test -n "$AZURE_CLIENT_ID" || {
+            echo "AZURE_CLIENT_ID is missing"
+            exit 1
+          }
+
+          test -n "$AZURE_TENANT_ID" || {
+            echo "AZURE_TENANT_ID is missing"
+            exit 1
+          }
+
+          test -n "$AZURE_SUBSCRIPTION_ID" || {
+            echo "AZURE_SUBSCRIPTION_ID is missing"
+            exit 1
+          }
+
+          echo "All Azure authentication values are present."
+
+      - name: Log in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login \
+            --name "${{ vars.ACR_NAME }}"
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t "${{ vars.ACR_LOGIN_SERVER }}/realstateestimator-api:${IMAGE_TAG}" \
+            .
+
+          docker push \
+            "${{ vars.ACR_LOGIN_SERVER }}/realstateestimator-api:${IMAGE_TAG}"
+
+      - name: Deploy to Azure Container Apps
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          az containerapp update \
+            --name realstateestimator-api \
+            --resource-group realstateestimator-rg \
+            --image "${{ vars.ACR_LOGIN_SERVER }}/realstateestimator-api:${IMAGE_TAG}" \
+            --set-env-vars \
+              APP_VERSION="${IMAGE_TAG}" \
+              LOG_LEVEL="INFO"
+
+      - name: Verify deployment
+        run: |
+          FQDN=$(az containerapp show \
+            --name realstateestimator-api \
+            --resource-group realstateestimator-rg \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+
+          echo "Checking deployed application health..."
+
+          curl \
+            --fail \
+            --retry 10 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            "https://${FQDN}/health"
+
+          echo
+          echo "Deployment health check succeeded."

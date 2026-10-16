@@ -1,0 +1,24 @@
+name: Performance Benchmarks
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 9 * * 1"
+
+jobs:
+  benchmark:
+    name: Benchmark API and Resource Loading
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Run benchmarks
+        run: make benchmark
