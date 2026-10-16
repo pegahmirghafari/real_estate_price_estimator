@@ -274,9 +274,11 @@ az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 az acr create --resource-group "$RESOURCE_GROUP" --name "$ACR_NAME" --sku Basic
 ```
 
-### 5. Build the Docker image in Azure Container Registry
+### 5. Build the Docker image locally then in  Azure Container Registry
 
-From the repository root:
+```bash
+docker buildx build --platform linux/amd64  -t "$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"  --load  .
+```
 
 ```bash
 az acr build --registry "$ACR_NAME" --image "$IMAGE_NAME:$IMAGE_TAG" .
@@ -342,10 +344,7 @@ curl -X POST "$API_URL/predict" -H "Content-Type: application/json" -d '{"zipcod
 Open `https://<your-app-fqdn>/docs` to explore the FastAPI documentation. If a request fails, inspect application logs:
 
 ```bash
-az containerapp logs show \
-  --name "$APP_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --follow
+az containerapp logs show name "$APP_NAME" resource-group "$RESOURCE_GROUP" follow
 ```
 
 ### 9. Connect Streamlit to the Prediction API
@@ -423,6 +422,7 @@ Useful references: [GitHub OIDC with Azure](https://learn.microsoft.com/en-us/az
 ```bash
 az group delete --name "$RESOURCE_GROUP" --yes --no-wait
 ```
+***the container and resources are now deleted after deployment for this project***
 
 ## Limitations and Next Steps
 
